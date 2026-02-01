@@ -2,11 +2,11 @@ package handler
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
 	"satunaskah/internal/document/model"
 	"satunaskah/internal/document/service"
 	"satunaskah/middleware"
+	"satunaskah/pkg/logger"
 )
 
 type DocumentHandler struct {
@@ -30,6 +30,7 @@ func (h *DocumentHandler) CreateDocument(w http.ResponseWriter, r *http.Request)
 
 	docID, err := h.Service.CreateDocument(userID, req.Title)
 	if err != nil {
+		logger.Sugar.Errorf("Handler: Failed to create document: %v", err)
 		http.Error(w, "Failed to create document: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -58,7 +59,7 @@ func (h *DocumentHandler) SaveDocument(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value(middleware.UserIDKey).(string)
 
 	if err := h.Service.SaveDocument(userID, req); err != nil {
-		log.Printf("Error saving document: %v", err)
+		logger.Sugar.Errorf("Error saving document: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -82,6 +83,7 @@ func (h *DocumentHandler) DeleteDocument(w http.ResponseWriter, r *http.Request)
 	userID := r.Context().Value(middleware.UserIDKey).(string)
 
 	if err := h.Service.DeleteDocument(docID, userID); err != nil {
+		logger.Sugar.Errorf("Handler: Failed to delete document %s: %v", docID, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -111,6 +113,7 @@ func (h *DocumentHandler) UpdateDocument(w http.ResponseWriter, r *http.Request)
 	}
 
 	if err := h.Service.UpdateTitle(docID, userID, req.Title); err != nil {
+		logger.Sugar.Errorf("Handler: Failed to update title for doc %s: %v", docID, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -139,6 +142,7 @@ func (h *DocumentHandler) AddCollaborator(w http.ResponseWriter, r *http.Request
 	userID := r.Context().Value(middleware.UserIDKey).(string)
 
 	if err := h.Service.InviteCollaborator(userID, req); err != nil {
+		logger.Sugar.Errorf("Handler: Failed to invite collaborator: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -157,7 +161,7 @@ func (h *DocumentHandler) GetDocuments(w http.ResponseWriter, r *http.Request) {
 
 	docs, err := h.Service.GetDocuments(userID)
 	if err != nil {
-		log.Printf("Error fetching documents: %v", err)
+		logger.Sugar.Errorf("Error fetching documents: %v", err)
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}
@@ -187,7 +191,7 @@ func (h *DocumentHandler) AddComment(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.Service.AddComment(userID, req)
 	if err != nil {
-		log.Printf("Failed to add comment: %v", err)
+		logger.Sugar.Errorf("Failed to add comment: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -210,7 +214,7 @@ func (h *DocumentHandler) GetComments(w http.ResponseWriter, r *http.Request) {
 
 	comments, err := h.Service.Repo.GetComments(docID)
 	if err != nil {
-		log.Printf("Error fetching comments: %v", err)
+		logger.Sugar.Errorf("Error fetching comments: %v", err)
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}
@@ -234,6 +238,7 @@ func (h *DocumentHandler) ResolveComment(w http.ResponseWriter, r *http.Request)
 	userID := r.Context().Value(middleware.UserIDKey).(string)
 
 	if err := h.Service.ResolveComment(commentID, userID); err != nil {
+		logger.Sugar.Errorf("Handler: Failed to resolve comment %s: %v", commentID, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -257,6 +262,7 @@ func (h *DocumentHandler) DeleteComment(w http.ResponseWriter, r *http.Request) 
 	userID := r.Context().Value(middleware.UserIDKey).(string)
 
 	if err := h.Service.DeleteComment(commentID, userID); err != nil {
+		logger.Sugar.Errorf("Handler: Failed to delete comment %s: %v", commentID, err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -287,7 +293,7 @@ func (h *DocumentHandler) GetDocumentMembers(w http.ResponseWriter, r *http.Requ
 
 	members, err := h.Service.Repo.GetDocumentMembers(docID)
 	if err != nil {
-		log.Printf("Error fetching members: %v", err)
+		logger.Sugar.Errorf("Error fetching members: %v", err)
 		http.Error(w, "Database error", http.StatusInternalServerError)
 		return
 	}

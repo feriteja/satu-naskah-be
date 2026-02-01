@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"satunaskah/internal/document/model"
 	"satunaskah/internal/document/repository"
+	"satunaskah/pkg/logger"
 	"satunaskah/socket"
 	"strings"
 )
@@ -23,12 +24,18 @@ func NewDocumentService(repo *repository.DocumentRepository, hub *socket.Hub) *D
 func (s *DocumentService) CreateDocument(userID, title string) (string, error) {
 	docID := generateDocID()
 	if docID == "" {
+		logger.Sugar.Error("Service: Failed to generate document ID")
 		return "", errors.New("failed to generate document ID")
 	}
 	if title == "" {
 		title = "Untitled Document"
 	}
 	err := s.Repo.Create(docID, `{"ops":[]}`, userID, title)
+	if err != nil {
+		logger.Sugar.Errorf("Service: Failed to create document for user %s: %v", userID, err)
+	} else {
+		logger.Sugar.Infof("Service: Document created %s by %s", docID, userID)
+	}
 	return docID, err
 }
 
@@ -39,6 +46,7 @@ func (s *DocumentService) SaveDocument(userID string, req model.SaveDocRequest) 
 		return err
 	}
 	if role != "writer" {
+		logger.Sugar.Warnf("Service: User %s tried to save doc %s without writer role", userID, req.DocID)
 		return errors.New("unauthorized: only writers can save")
 	}
 
@@ -63,12 +71,14 @@ func (s *DocumentService) DeleteDocument(docID, userID string) error {
 		return err
 	}
 	if ownerID != userID {
+		logger.Sugar.Warnf("Service: User %s tried to delete doc %s owned by %s", userID, docID, ownerID)
 		return errors.New("unauthorized: only owner can delete")
 	}
 
 	if err := s.Repo.Delete(docID); err != nil {
 		return err
 	}
+	logger.Sugar.Infof("Service: Document %s deleted by %s", docID, userID)
 	s.Hub.RemoveDocument(docID)
 	return nil
 }
@@ -90,11 +100,13 @@ func (s *DocumentService) InviteCollaborator(userID string, req model.InviteRequ
 		return err
 	}
 	if ownerID != userID {
+		logger.Sugar.Warnf("Service: User %s tried to invite to doc %s without ownership", userID, req.DocID)
 		return errors.New("unauthorized: only owner can invite")
 	}
 
 	targetUserID, err := s.Repo.GetUserByEmail(req.Email)
 	if err != nil {
+		logger.Sugar.Warnf("Service: Invite failed, user email %s not found", req.Email)
 		return errors.New("user not found with that email")
 	}
 
@@ -136,6 +148,7 @@ func (s *DocumentService) AddComment(userID string, req model.CommentRequest) (*
 		return nil, err
 	}
 	if role != "writer" && role != "reviewer" {
+		logger.Sugar.Warnf("Service: User %s tried to comment on doc %s without permission", userID, req.DocID)
 		return nil, errors.New("unauthorized")
 	}
 

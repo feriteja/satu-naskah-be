@@ -3,7 +3,7 @@ package socket
 import (
 	"database/sql"
 	"encoding/json"
-	"log"
+	"satunaskah/pkg/logger"
 	"sync"
 	"time"
 
@@ -89,7 +89,7 @@ func (h *Hub) Run() {
 				var content []byte
 				err := h.db.QueryRow("SELECT content FROM documents WHERE id = $1", client.DocID).Scan(&content)
 				if err != nil {
-					log.Printf("Failed to load document %s (or not found): %v", client.DocID, err)
+					logger.Sugar.Errorf("Failed to load document %s (or not found): %v", client.DocID, err)
 					content = []byte(`{"ops":[]}`) // Default to empty content on failure
 				}
 				h.DocumentCache[client.DocID] = content
@@ -135,14 +135,14 @@ func (h *Hub) Run() {
 							h.DocumentCache[client.DocID], client.DocID,
 						)
 						if err != nil {
-							log.Printf("Failed to save doc %s on close: %v", client.DocID, err)
+							logger.Sugar.Errorf("Failed to save doc %s on close: %v", client.DocID, err)
 						}
 					}
 					delete(h.Rooms, client.DocID)
 					delete(h.Presence, client.DocID)
 					delete(h.DocumentCache, client.DocID)
 					delete(h.DirtyDocs, client.DocID)
-					log.Printf("Closed and cleaned up empty room: %s", client.DocID)
+					logger.Sugar.Infof("Closed and cleaned up empty room: %s", client.DocID)
 				}
 			}
 			h.mu.Unlock()
@@ -167,7 +167,7 @@ func (h *Hub) Run() {
 			// Marshal the message once to be sent to all clients.
 			payload, err := json.Marshal(msg)
 			if err != nil {
-				log.Printf("Error marshalling broadcast message: %v", err)
+				logger.Sugar.Errorf("Error marshalling broadcast message: %v", err)
 				h.mu.Unlock()
 				continue
 			}
@@ -191,7 +191,7 @@ func (h *Hub) Run() {
 				default:
 					// If the send buffer is full, the client is lagging.
 					// Unregister the client to prevent blocking the hub.
-					log.Printf("Client %s's send buffer is full. Unregistering.", client.UserID)
+					logger.Sugar.Warnf("Client %s's send buffer is full. Unregistering.", client.UserID)
 					h.Unregister <- client
 				}
 			}
@@ -239,7 +239,7 @@ func (h *Hub) SaveWorker() {
 			// Since documents are always created via the API, we only ever need to update them here.
 			_, err := h.db.Exec(`UPDATE documents SET content = $1, updated_at = NOW() WHERE id = $2`, data.Content, docID)
 			if err != nil {
-				log.Printf("Failed to save doc %s: %v", docID, err)
+				logger.Sugar.Errorf("Failed to save doc %s: %v", docID, err)
 				continue // Leave the dirty flag as true, will retry on the next tick.
 			}
 
@@ -254,7 +254,7 @@ func (h *Hub) SaveWorker() {
 			}
 			h.mu.Unlock()
 
-			log.Printf("Auto-saved document: %s", docID)
+			logger.Sugar.Infof("Auto-saved document: %s", docID)
 		}
 	}
 }
@@ -306,7 +306,7 @@ func (h *Hub) broadcastPresenceUpdate(docID string) {
 	// Marshal the payload outside the lock
 	payload, err := json.Marshal(userStatuses)
 	if err != nil {
-		log.Printf("Error marshalling presence broadcast: %v", err)
+		logger.Sugar.Errorf("Error marshalling presence broadcast: %v", err)
 		return
 	}
 	broadcastPayload, _ := json.Marshal(WSMessage{Type: PresenceUpdateType, DocID: docID, Payload: payload})
@@ -316,7 +316,7 @@ func (h *Hub) broadcastPresenceUpdate(docID string) {
 		case client.Send <- broadcastPayload:
 		default:
 			// Don't unregister here, just log. The main pumps will handle unresponsive clients.
-			log.Printf("Client %s's send buffer was full during presence update.", client.UserID)
+			logger.Sugar.Warnf("Client %s's send buffer was full during presence update.", client.UserID)
 		}
 	}
 }

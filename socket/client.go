@@ -3,8 +3,8 @@ package socket
 import (
 	"database/sql"
 	"encoding/json"
-	"log"
 	"net/http"
+	"satunaskah/pkg/logger"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -21,13 +21,13 @@ func ServeWs(hub *Hub, w http.ResponseWriter, r *http.Request, userID string) {
 	// 9. The HTTP connection is upgraded to a persistent WebSocket connection.
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println(err)
+		logger.Sugar.Error(err)
 		return
 	}
 
 	docID := r.URL.Query().Get("docId")
 	if docID == "" {
-		log.Println("Missing docId")
+		logger.Sugar.Error("Missing docId")
 		return
 	}
 
@@ -40,10 +40,10 @@ func ServeWs(hub *Hub, w http.ResponseWriter, r *http.Request, userID string) {
 	var title string
 	err = hub.db.QueryRow("SELECT owner_id, title FROM documents WHERE id = $1", docID).Scan(&ownerID, &title)
 	if err == sql.ErrNoRows {
-		log.Printf("Connection rejected: Document %s not found", docID)
+		logger.Sugar.Warnf("Connection rejected: Document %s not found", docID)
 		return // Close connection if document doesn't exist
 	} else if err != nil {
-		log.Printf("Database error checking owner: %v", err)
+		logger.Sugar.Errorf("Database error checking owner: %v", err)
 		return
 	}
 
@@ -94,7 +94,7 @@ func (c *Client) readPump() {
 		_, rawMessage, err := c.Conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("error: %v", err)
+				logger.Sugar.Errorf("error: %v", err)
 			}
 			break
 		}
@@ -102,7 +102,7 @@ func (c *Client) readPump() {
 		// Unmarshal the message so the hub can inspect its type.
 		var msg WSMessage
 		if err := json.Unmarshal(rawMessage, &msg); err != nil {
-			log.Printf("Error unmarshalling message: %v", err)
+			logger.Sugar.Errorf("Error unmarshalling message: %v", err)
 			continue
 		}
 
@@ -117,7 +117,7 @@ func (c *Client) readPump() {
 		case UpdateType:
 			// Only Writers can edit text
 			if c.Role != RoleWriter {
-				log.Printf("Permission Denied: User %s (Role: %s) tried to edit doc %s", c.UserID, c.Role, c.DocID)
+				logger.Sugar.Warnf("Permission Denied: User %s (Role: %s) tried to edit doc %s", c.UserID, c.Role, c.DocID)
 				continue
 			}
 		}

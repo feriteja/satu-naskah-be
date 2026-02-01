@@ -1,9 +1,10 @@
 package main
 
 import (
-	"log"
 	"net/http"
+	"os"
 	"satunaskah/config/database"
+	"satunaskah/pkg/logger"
 	"satunaskah/router"
 	"satunaskah/socket"
 
@@ -11,8 +12,11 @@ import (
 )
 
 func main() {
+	logger.Init()
+	defer logger.Log.Sync()
+
 	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found, using environment variables from OS")
+		logger.Sugar.Warn("No .env file found, using environment variables from OS")
 	}
 
 	db := database.Connect()
@@ -24,8 +28,9 @@ func main() {
 
 	mux := router.Setup(db, hub)
 
-	log.Println("Go Backend listening on :8080")
+	logger.Log.Info("Go Backend listening on :8080")
 	if err := http.ListenAndServe(":8080", mux); err != nil {
-		log.Fatalf("Server failed: %v", err)
+		logger.Sugar.Errorw("Server failed", "error", err)
+		os.Exit(1)
 	}
 }

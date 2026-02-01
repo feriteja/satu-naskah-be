@@ -7,13 +7,14 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"log"
 	"math/big"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
 	"time"
+
+	"satunaskah/pkg/logger"
 
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -63,32 +64,32 @@ func getSupabasePublicKey(kid string) (*ecdsa.PublicKey, error) {
 
 	// Rate limit: Don't fetch more than once every 10 seconds
 	if time.Since(lastJWKSFetch) < 10*time.Second {
-		log.Printf("DEBUG: Rate limit active. Key %s not found in cache.", kid)
+		logger.Sugar.Infof("DEBUG: Rate limit active. Key %s not found in cache.", kid)
 		return nil, fmt.Errorf("key %s not found (rate limit active)", kid)
 	}
 
 	supabaseURL := os.Getenv("SUPABASE_URL")
 	if supabaseURL == "" {
-		log.Println("ERROR: SUPABASE_URL environment variable is not set")
+		logger.Sugar.Error("ERROR: SUPABASE_URL environment variable is not set")
 		return nil, fmt.Errorf("SUPABASE_URL environment variable is not set")
 	}
 
-	log.Printf("DEBUG: Fetching JWKS from %s/auth/v1/.well-known/jwks.json", supabaseURL)
+	logger.Sugar.Infof("DEBUG: Fetching JWKS from %s/auth/v1/.well-known/jwks.json", supabaseURL)
 	resp, err := http.Get(supabaseURL + "/auth/v1/.well-known/jwks.json")
 	if err != nil {
-		log.Printf("ERROR: Failed to fetch JWKS: %v", err)
+		logger.Sugar.Errorf("ERROR: Failed to fetch JWKS: %v", err)
 		return nil, fmt.Errorf("failed to fetch JWKS: %v", err)
 	}
 	defer resp.Body.Close()
 
 	var jwks JWKS
 	if err := json.NewDecoder(resp.Body).Decode(&jwks); err != nil {
-		log.Printf("ERROR: Failed to decode JWKS JSON: %v", err)
+		logger.Sugar.Errorf("ERROR: Failed to decode JWKS JSON: %v", err)
 		return nil, fmt.Errorf("failed to decode JWKS: %v", err)
 	}
 
 	lastJWKSFetch = time.Now()
-	log.Printf("DEBUG: Fetched %d keys from Supabase", len(jwks.Keys))
+	logger.Sugar.Infof("DEBUG: Fetched %d keys from Supabase", len(jwks.Keys))
 
 	// Parse and cache keys
 	for _, k := range jwks.Keys {
@@ -110,7 +111,7 @@ func getSupabasePublicKey(kid string) (*ecdsa.PublicKey, error) {
 		return key, nil
 	}
 
-	log.Printf("ERROR: Key ID %s not found in Supabase JWKS", kid)
+	logger.Sugar.Errorf("ERROR: Key ID %s not found in Supabase JWKS", kid)
 	return nil, fmt.Errorf("key id %s not found in Supabase JWKS", kid)
 }
 
@@ -128,7 +129,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		}
 
 		if tokenString == "" {
-			log.Println("DEBUG: No token provided in request")
+			logger.Sugar.Info("DEBUG: No token provided in request")
 			http.Error(w, "Unauthorized: No token provided", http.StatusUnauthorized)
 			return
 		}
@@ -139,7 +140,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); ok {
 				jwtSecret := os.Getenv("SUPABASE_JWT_SECRET")
 				if jwtSecret == "" {
-					log.Println("FATAL: SUPABASE_JWT_SECRET environment variable not set.")
+					logger.Sugar.Fatal("FATAL: SUPABASE_JWT_SECRET environment variable not set.")
 					return nil, fmt.Errorf("server is not configured to validate JWTs")
 				}
 				return []byte(jwtSecret), nil
@@ -149,23 +150,23 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			if _, ok := token.Method.(*jwt.SigningMethodECDSA); ok {
 				kid, ok := token.Header["kid"].(string)
 				if !ok {
-					log.Println("ERROR: Token header missing 'kid'")
+					logger.Sugar.Error("ERROR: Token header missing 'kid'")
 					return nil, fmt.Errorf("missing 'kid' header in token")
 				}
 				key, err := getSupabasePublicKey(kid)
 				if err != nil {
-					log.Printf("ERROR: Failed to get public key for kid %s: %v", kid, err)
+					logger.Sugar.Errorf("ERROR: Failed to get public key for kid %s: %v", kid, err)
 					return nil, err
 				}
 				return key, nil
 			}
 
-			log.Printf("ERROR: Unexpected signing method: %v", token.Header["alg"])
+			logger.Sugar.Errorf("ERROR: Unexpected signing method: %v", token.Header["alg"])
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		})
 
 		if err != nil || !token.Valid {
-			log.Printf("Invalid token: %v", err)
+			logger.Sugar.Warnf("Invalid token: %v", err)
 			http.Error(w, "Unauthorized: Invalid or expired token", http.StatusUnauthorized)
 			return
 		}
@@ -173,14 +174,14 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		// Extract the user_id (the 'sub' claim in Supabase JWTs)
 		claims, ok := token.Claims.(jwt.MapClaims)
 		if !ok {
-			log.Println("ERROR: Could not parse token claims")
+			logger.Sugar.Error("ERROR: Could not parse token claims")
 			http.Error(w, "Unauthorized: Could not parse token claims", http.StatusUnauthorized)
 			return
 		}
 		// It extracts the user ID (the 'sub' claim) from the token.
 		userID, ok := claims["sub"].(string)
 		if !ok {
-			log.Println("ERROR: User ID (sub) claim is missing or invalid")
+			logger.Sugar.Error("ERROR: User ID (sub) claim is missing or invalid")
 			http.Error(w, "Unauthorized: User ID (sub) claim is missing or invalid", http.StatusUnauthorized)
 			return
 		}
