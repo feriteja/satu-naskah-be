@@ -17,6 +17,8 @@ const (
 	LeaveType          = "LEAVE"           // User closed the tab
 	PresenceUpdateType = "PRESENCE_UPDATE" // A user joined or left
 	CommentType        = "COMMENT"         // New comment added
+	CommentUpdateType  = "COMMENT_UPDATE"  // Comment resolved/edited
+	CommentDeleteType  = "COMMENT_DELETE"  // Comment deleted
 	MetadataType       = "METADATA"        // Document title/info
 
 	RoleWriter   = "writer"
